@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LANG: C.UTF-8
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            appstream \
+            ca-certificates \
+            cmake \
+            desktop-file-utils \
+            extra-cmake-modules \
+            g++ \
+            git \
+            libpipewire-0.3-dev \
+            libxml2-utils \
+            ninja-build \
+            pkg-config \
+            qml6-module-org-kde-kirigami \
+            qml6-module-qtquick-controls \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            qt6-declarative-dev-tools
+
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Validate QML
+        run: /usr/lib/qt6/bin/qmllint -I build qml/Main.qml
+
+      - name: Validate desktop metadata
+        run: |
+          appstreamcli validate --no-net data/io.github.mizuikki.CodecDeck.metainfo.xml
+          desktop-file-validate data/io.github.mizuikki.CodecDeck.desktop
+          xmllint --noout data/io.github.mizuikki.codecdeck.policy.in
