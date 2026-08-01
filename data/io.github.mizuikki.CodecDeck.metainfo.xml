@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mizuikki.CodecDeck</id>
+  <name>CodecDeck</name>
+  <summary>Control Bluetooth audio codecs on PipeWire</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.mizuikki">
+    <name>CodecDeck contributors</name>
+  </developer>
+  <url type="homepage">https://github.com/mizuikki/codecdeck</url>
+  <url type="bugtracker">https://github.com/mizuikki/codecdeck/issues</url>
+  <description>
+    <p>CodecDeck controls Bluetooth A2DP codec profiles and quality preferences on Linux systems using PipeWire and WirePlumber.</p>
+  </description>
+  <launchable type="desktop-id">io.github.mizuikki.CodecDeck.desktop</launchable>
+  <provides>
+    <binary>codecdeck</binary>
+  </provides>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Settings</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-08-01"/>
+  </releases>
+</component>

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=CodecDeck
+Comment=Control Bluetooth audio codecs
+Exec=codecdeck
+Icon=audio-headphones
+Categories=AudioVideo;Audio;
+Terminal=false
+StartupNotify=true
