@@ -7,7 +7,8 @@ control from persistent policy.
 Qt Quick / Kirigami
         |
   AppController
-    |         |
+    |         |         |
+    |         |         +-- BluezDeviceManager --> BlueZ ObjectManager / Device1
     |         +-- ConfigStore --> WirePlumber user drop-in
     |
     +-- PipeWireMonitor --> PipeWire registry and device parameters
@@ -43,6 +44,21 @@ The controller keeps editable settings separate from the last configuration
 written successfully. The settings controls edit a draft, while active
 transport warnings compare negotiated values with the configured values.
 Saving promotes the draft to configured state before the service reconnects.
+
+## Bluetooth device inventory
+
+`BluezDeviceManager` observes BlueZ's ObjectManager and Properties signals on
+the system D-Bus. It publishes paired devices that advertise the A2DP Audio
+Sink service, including devices that are currently disconnected. Connection
+and disconnection call `org.bluez.Device1.Connect` and `Disconnect` without a
+privileged helper.
+
+`AppController` merges the BlueZ inventory with PipeWire snapshots by BlueZ
+object path, with the device address as a compatibility fallback. BlueZ owns
+identity and connection state; PipeWire owns profiles and negotiated transport
+values. A connection is ready for codec control only after both BlueZ reports
+the device connected and PipeWire publishes its A2DP profiles. Device selection
+is kept stable by object path when either snapshot changes.
 
 ## PipeWire integration
 

@@ -17,6 +17,8 @@ qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(codecdeck
     src/main.cpp
+    src/bluezdevicemanager.cpp
+    src/bluezdevicemanager.h
     src/appcontroller.cpp
     src/appcontroller.h
     src/configstore.cpp
@@ -91,6 +93,19 @@ if(BUILD_TESTING)
     )
     add_test(NAME codecdeck-pipewire-tests COMMAND codecdeck-pipewire-tests)
     set_tests_properties(codecdeck-pipewire-tests PROPERTIES LABELS integration)
+
+    qt_add_executable(codecdeck-bluez-tests
+        tests/bluezdevicemanager_test.cpp
+        src/bluezdevicemanager.cpp
+        src/bluezdevicemanager.h
+    )
+    target_include_directories(codecdeck-bluez-tests PRIVATE src)
+    target_compile_definitions(codecdeck-bluez-tests PRIVATE
+        QT_NO_CAST_FROM_ASCII
+        QT_NO_CAST_TO_ASCII
+    )
+    target_link_libraries(codecdeck-bluez-tests PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
+    add_test(NAME codecdeck-bluez-tests COMMAND codecdeck-bluez-tests)
 endif()
 
 install(TARGETS codecdeck RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

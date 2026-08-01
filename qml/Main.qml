@@ -83,7 +83,9 @@ Kirigami.ApplicationWindow {
                         anchors.margins: Kirigami.Units.largeSpacing
                         spacing: Kirigami.Units.smallSpacing
                         Kirigami.Icon {
-                            source: root.currentDevice.connected ? "network-connect" : "network-disconnect"
+                            source: Backend.connectionOperation !== "idle"
+                                    ? "network-transmit-receive"
+                                    : root.currentDevice.connected ? "network-connect" : "network-disconnect"
                             implicitWidth: Kirigami.Units.iconSizes.smallMedium
                             implicitHeight: implicitWidth
                         }
@@ -110,13 +112,37 @@ Kirigami.ApplicationWindow {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
                         Kirigami.Heading { text: "Device"; level: 2 }
-                        ComboBox {
+                        RowLayout {
                             Layout.fillWidth: true
-                            model: Backend.devices
-                            textRole: "name"
-                            currentIndex: Backend.selectedDevice
-                            enabled: count > 0 && !Backend.busy
-                            onActivated: Backend.selectedDevice = currentIndex
+                            spacing: Kirigami.Units.smallSpacing
+
+                            ComboBox {
+                                id: deviceBox
+                                Layout.fillWidth: true
+                                model: Backend.devices
+                                textRole: "displayName"
+                                currentIndex: Backend.selectedDevice
+                                enabled: count > 0 && !Backend.busy
+                                onActivated: Backend.selectedDevice = currentIndex
+                            }
+
+                            Button {
+                                Layout.minimumWidth: 148
+                                text: Backend.connectionOperation === "connecting"
+                                      ? "Connecting..."
+                                      : Backend.connectionOperation === "disconnecting"
+                                        ? "Disconnecting..."
+                                        : root.currentDevice.connected ? "Disconnect" : "Connect"
+                                icon.name: root.currentDevice.connected
+                                           ? "network-disconnect" : "network-connect"
+                                enabled: !!root.currentDevice.bluezPath && !Backend.busy
+                                onClicked: {
+                                    if (root.currentDevice.connected)
+                                        Backend.disconnectSelectedDevice()
+                                    else
+                                        Backend.connectSelectedDevice()
+                                }
+                            }
                         }
                     }
 
@@ -223,7 +249,7 @@ Kirigami.ApplicationWindow {
                                     Layout.fillWidth: true
                                     model: root.profiles
                                     textRole: "label"
-                                    enabled: count > 0 && !Backend.busy
+                                    enabled: root.currentDevice.connected && count > 0 && !Backend.busy
                                     Component.onCompleted: currentIndex = root.profileIndex(root.currentDevice.codec || "")
                                     Connections {
                                         target: Backend
@@ -237,7 +263,10 @@ Kirigami.ApplicationWindow {
                             Button {
                                 text: "Switch codec"
                                 icon.name: "media-playback-start"
-                                enabled: root.selectedCodec !== "" && root.selectedCodec !== root.currentDevice.codec && !Backend.busy
+                                enabled: root.currentDevice.connected
+                                         && root.selectedCodec !== ""
+                                         && root.selectedCodec !== root.currentDevice.codec
+                                         && !Backend.busy
                                 onClicked: Backend.switchCodec(root.selectedCodec)
                             }
                         }
@@ -262,7 +291,8 @@ Kirigami.ApplicationWindow {
                             ComboBox {
                                 id: rateBox
                                 Layout.fillWidth: true
-                                enabled: root.configurationCodec !== "" && !Backend.busy
+                                enabled: root.currentDevice.connected
+                                         && root.configurationCodec !== "" && !Backend.busy
                                 property var supportedValues: root.configurationCodec === ""
                                                               ? [Backend.preferredRate]
                                                               : root.configurationCodec === "ldac"
@@ -302,7 +332,8 @@ Kirigami.ApplicationWindow {
                                                      : root.configurationCodec === "lhdc_v5"
                                                        ? ["auto", "400k", "500k", "900k", "1000k"]
                                                        : ["system"]
-                                enabled: root.hasQualityControl && !Backend.busy
+                                enabled: root.currentDevice.connected
+                                         && root.hasQualityControl && !Backend.busy
                                 Component.onCompleted: {
                                     const value = root.configurationCodec === "ldac" ? Backend.ldacQuality : Backend.lhdcQuality
                                     currentIndex = Math.max(0, values.indexOf(value))
@@ -329,7 +360,8 @@ Kirigami.ApplicationWindow {
                             text: "Apply and reconnect"
                             icon.name: "dialog-ok-apply"
                             highlighted: true
-                            enabled: root.selectedCodec !== "" && !Backend.busy
+                            enabled: root.currentDevice.connected
+                                     && root.selectedCodec !== "" && !Backend.busy
                                      && (Backend.hasPendingSettings
                                          || root.selectedCodec !== root.currentDevice.codec)
                             onClicked: Backend.apply(root.selectedCodec)

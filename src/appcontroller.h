@@ -1,10 +1,12 @@
 #pragma once
 
+#include "bluezdevicemanager.h"
 #include "configstore.h"
 #include "pipewiremonitor.h"
 
 #include <QObject>
 #include <QProcess>
+#include <QTimer>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
@@ -21,6 +23,7 @@ class AppController final : public QObject
     Q_PROPERTY(QString lhdcQuality READ lhdcQuality WRITE setLhdcQuality NOTIFY settingsChanged)
     Q_PROPERTY(bool hasPendingSettings READ hasPendingSettings NOTIFY settingsChanged)
     Q_PROPERTY(QString requestedCodec READ requestedCodec NOTIFY requestedTransportChanged)
+    Q_PROPERTY(QString connectionOperation READ connectionOperation NOTIFY connectionOperationChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
 
@@ -40,11 +43,14 @@ public:
     void setLhdcQuality(const QString &value);
     [[nodiscard]] bool hasPendingSettings() const;
     [[nodiscard]] QString requestedCodec() const;
+    [[nodiscard]] QString connectionOperation() const;
 
     [[nodiscard]] QString statusMessage() const;
     [[nodiscard]] bool busy() const;
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void connectSelectedDevice();
+    Q_INVOKABLE void disconnectSelectedDevice();
     Q_INVOKABLE void refreshCapabilities();
     Q_INVOKABLE void apply(const QString &codec);
     Q_INVOKABLE void switchCodec(const QString &codec);
@@ -55,12 +61,18 @@ signals:
     void settingsChanged();
     void configuredSettingsChanged();
     void requestedTransportChanged();
+    void connectionOperationChanged();
     void statusMessageChanged();
     void busyChanged();
 
 private:
     QString selectedAddress() const;
     QString selectedBluezPath() const;
+    QVariantMap deviceByPath(const QString &path) const;
+    void rebuildDevices();
+    void evaluateConnectionOperation();
+    void finishConnectionOperation(const QString &message);
+    void updateIdleStatus();
     void setStatusMessage(const QString &message);
     void setRequestedCodec(const QString &codec, const QString &address);
     void clearRequestedCodec();
@@ -71,7 +83,10 @@ private:
     void retryCodecSelection();
 
     ConfigStore m_store;
+    BluezDeviceManager m_bluez;
     PipeWireMonitor m_monitor;
+    QVariantList m_bluezDevices;
+    QVariantList m_pipewireDevices;
     QVariantList m_devices;
     int m_selectedDevice = -1;
     CodecSettings m_configuredSettings;
@@ -84,6 +99,10 @@ private:
     QString m_pendingBluezPath;
     QString m_requestedCodec;
     QString m_requestedAddress;
+    QString m_connectionOperation = QStringLiteral("idle");
+    QString m_connectionPath;
+    bool m_connectionTargetConnected = false;
+    QTimer m_connectionTimer;
     int m_retryCount = 0;
     bool m_profileSelectionIssued = false;
     QProcess *m_helperProcess = nullptr;

@@ -8,6 +8,7 @@ preferences from one interface.
 ## Current features
 
 - Native PipeWire device and node discovery, without parsing command output
+- Paired A2DP device discovery and connection control through BlueZ
 - Active codec, profile, PCM format, sample rate, and channel count
 - Inline requested-versus-active codec and sample-rate fallback indicators
 - Separate draft, configured, and negotiated sample-rate state
@@ -84,6 +85,11 @@ runs `/usr/libexec/codecdeck-helper`, which validates the selected BlueZ object
 path, disconnects that device, backs up its cache under
 `/var/backups/codecdeck`, and removes only that cache file. The GUI itself
 always remains unprivileged.
+
+Normal device connection and disconnection use `org.bluez.Device1` directly
+and do not invoke the privileged helper. CodecDeck lists paired A2DP devices
+even while they are disconnected; live codec and format controls become
+available after PipeWire publishes the connected audio transport.
 
 ## License
 

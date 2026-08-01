@@ -3,10 +3,11 @@
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusMessage>
-#include <QDBusPendingCallWatcher>
-#include <QDBusPendingReply>
 #include <QFileInfo>
+#include <QSet>
 #include <QTimer>
+
+#include <algorithm>
 
 namespace {
 QString codecLabel(const QString &codec)
@@ -18,47 +19,73 @@ QString codecLabel(const QString &codec)
 }
 
 AppController::AppController(QObject *parent)
-    : QObject(parent), m_monitor(this), m_configuredSettings(m_store.load()),
+    : QObject(parent), m_bluez(this), m_monitor(this), m_configuredSettings(m_store.load()),
       m_settings(m_configuredSettings)
 {
+    m_connectionTimer.setSingleShot(true);
+    connect(&m_connectionTimer, &QTimer::timeout, this, [this] {
+        const QVariantMap device = deviceByPath(m_connectionPath);
+        if (m_connectionTargetConnected
+            && device.value(QStringLiteral("connected")).toBool()) {
+            finishConnectionOperation(
+                QStringLiteral("Connected, but no audio transport is available"));
+        } else {
+            finishConnectionOperation(m_connectionTargetConnected
+                                          ? QStringLiteral("Bluetooth connection timed out")
+                                          : QStringLiteral("Bluetooth disconnection timed out"));
+        }
+    });
+
+    connect(&m_bluez, &BluezDeviceManager::devicesChanged, this,
+            [this](const QVariantList &devices) {
+        m_bluezDevices = devices;
+        rebuildDevices();
+        if (m_pendingCodec.isEmpty() && !m_capabilityRefresh
+            && m_connectionOperation == QStringLiteral("idle")) {
+            updateIdleStatus();
+        }
+    });
+    connect(&m_bluez, &BluezDeviceManager::connectionRequestFinished, this,
+            [this](const QString &path, bool connected, const QString &errorName,
+                   const QString &errorMessage) {
+        if (path != m_connectionPath || connected != m_connectionTargetConnected)
+            return;
+        if (errorName.isEmpty()) {
+            m_bluez.refresh();
+            evaluateConnectionOperation();
+            return;
+        }
+
+        const bool idempotent = (connected && errorName.endsWith(QStringLiteral("AlreadyConnected")))
+            || (!connected && errorName.endsWith(QStringLiteral("NotConnected")));
+        if (idempotent || errorName.endsWith(QStringLiteral("InProgress"))) {
+            m_bluez.refresh();
+            return;
+        }
+        finishConnectionOperation(errorMessage.isEmpty()
+                                      ? QStringLiteral("Bluetooth connection request failed")
+                                      : errorMessage);
+    });
     connect(&m_monitor, &PipeWireMonitor::devicesChanged, this,
             [this](const QVariantList &devices) {
-        const QString oldAddress = selectedAddress();
-        m_devices = devices;
-        m_selectedDevice = -1;
-        for (qsizetype i = 0; i < m_devices.size(); ++i) {
-            const QVariantMap device = m_devices.at(i).toMap();
-            if ((!oldAddress.isEmpty() && device.value(QStringLiteral("address")).toString() == oldAddress)
-                || (oldAddress.isEmpty() && device.value(QStringLiteral("connected")).toBool())) {
-                m_selectedDevice = static_cast<int>(i);
-                break;
-            }
+        m_pipewireDevices = devices;
+        rebuildDevices();
+        if (m_pendingCodec.isEmpty() && !m_capabilityRefresh
+            && m_connectionOperation == QStringLiteral("idle")) {
+            updateIdleStatus();
         }
-        if (m_selectedDevice < 0 && !m_devices.isEmpty())
-            m_selectedDevice = 0;
-        emit devicesChanged();
-        emit selectedDeviceChanged();
-        if (m_pendingCodec.isEmpty() && !m_requestedCodec.isEmpty()) {
-            for (const QVariant &value : std::as_const(m_devices)) {
-                const QVariantMap device = value.toMap();
-                if (device.value(QStringLiteral("address")).toString() == m_requestedAddress
-                    && device.value(QStringLiteral("codec")).toString() == m_requestedCodec) {
-                    clearRequestedCodec();
-                    break;
-                }
-            }
-        }
-        emit requestedTransportChanged();
-        if (m_pendingCodec.isEmpty() && !m_capabilityRefresh)
-            setStatusMessage(m_devices.isEmpty() ? QStringLiteral("No Bluetooth audio device")
-                                                  : QStringLiteral("Ready"));
     });
     connect(&m_monitor, &PipeWireMonitor::connectionChanged, this,
             [this](bool connected, const QString &error) {
-        setStatusMessage(connected ? QStringLiteral("Ready") : error);
+        if (!connected)
+            setStatusMessage(error);
+        else if (!m_busy)
+            updateIdleStatus();
     });
 
     QString error;
+    if (!m_bluez.start(&error))
+        setStatusMessage(error);
     if (!m_monitor.start(&error))
         setStatusMessage(error);
 }
@@ -73,6 +100,8 @@ void AppController::setSelectedDevice(int value)
     m_selectedDevice = value;
     emit selectedDeviceChanged();
     emit requestedTransportChanged();
+    if (!m_busy)
+        updateIdleStatus();
 }
 
 int AppController::preferredRate() const { return m_settings.sampleRate; }
@@ -114,13 +143,66 @@ QString AppController::requestedCodec() const
     return selectedAddress() == m_requestedAddress ? m_requestedCodec : QString{};
 }
 
+QString AppController::connectionOperation() const { return m_connectionOperation; }
+
 QString AppController::statusMessage() const { return m_statusMessage; }
 bool AppController::busy() const { return m_busy; }
 
 void AppController::refresh()
 {
+    m_bluez.refresh();
     m_monitor.refresh();
     setStatusMessage(QStringLiteral("Refreshing"));
+}
+
+void AppController::connectSelectedDevice()
+{
+    if (m_busy)
+        return;
+    const QString path = selectedBluezPath();
+    if (path.isEmpty()) {
+        setStatusMessage(QStringLiteral("No Bluetooth device is selected"));
+        return;
+    }
+    if (deviceByPath(path).value(QStringLiteral("connected")).toBool()) {
+        setStatusMessage(QStringLiteral("Bluetooth device is already connected"));
+        return;
+    }
+
+    m_connectionPath = path;
+    m_connectionTargetConnected = true;
+    m_connectionOperation = QStringLiteral("connecting");
+    emit connectionOperationChanged();
+    setBusy(true);
+    rebuildDevices();
+    setStatusMessage(QStringLiteral("Connecting Bluetooth device"));
+    m_connectionTimer.start(20000);
+    m_bluez.connectDevice(path);
+}
+
+void AppController::disconnectSelectedDevice()
+{
+    if (m_busy)
+        return;
+    const QString path = selectedBluezPath();
+    if (path.isEmpty()) {
+        setStatusMessage(QStringLiteral("No Bluetooth device is selected"));
+        return;
+    }
+    if (!deviceByPath(path).value(QStringLiteral("connected")).toBool()) {
+        setStatusMessage(QStringLiteral("Bluetooth device is already disconnected"));
+        return;
+    }
+
+    m_connectionPath = path;
+    m_connectionTargetConnected = false;
+    m_connectionOperation = QStringLiteral("disconnecting");
+    emit connectionOperationChanged();
+    setBusy(true);
+    rebuildDevices();
+    setStatusMessage(QStringLiteral("Disconnecting Bluetooth device"));
+    m_connectionTimer.start(10000);
+    m_bluez.disconnectDevice(path);
 }
 
 void AppController::refreshCapabilities()
@@ -190,6 +272,8 @@ void AppController::refreshCapabilities()
 
 void AppController::apply(const QString &codec)
 {
+    if (m_busy)
+        return;
     QString error;
     if (!m_store.save(m_settings, &error)) {
         setStatusMessage(error);
@@ -222,6 +306,8 @@ void AppController::apply(const QString &codec)
 
 void AppController::switchCodec(const QString &codec)
 {
+    if (m_busy)
+        return;
     m_pendingCodec = codec;
     m_pendingAddress = selectedAddress();
     m_pendingBluezPath = selectedBluezPath();
@@ -255,6 +341,191 @@ QString AppController::selectedBluezPath() const
     if (m_selectedDevice < 0 || m_selectedDevice >= m_devices.size())
         return {};
     return m_devices.at(m_selectedDevice).toMap().value(QStringLiteral("bluezPath")).toString();
+}
+
+QVariantMap AppController::deviceByPath(const QString &path) const
+{
+    for (const QVariant &value : m_devices) {
+        const QVariantMap device = value.toMap();
+        if (device.value(QStringLiteral("bluezPath")).toString() == path)
+            return device;
+    }
+    return {};
+}
+
+void AppController::rebuildDevices()
+{
+    const QString oldPath = selectedBluezPath();
+    const QString oldAddress = selectedAddress();
+    QVariantList merged;
+    QSet<qsizetype> usedPipewireDevices;
+
+    for (const QVariant &bluezValue : std::as_const(m_bluezDevices)) {
+        QVariantMap entry = bluezValue.toMap();
+        const QString path = entry.value(QStringLiteral("bluezPath")).toString();
+        const QString address = entry.value(QStringLiteral("address")).toString();
+
+        qsizetype match = -1;
+        for (qsizetype i = 0; i < m_pipewireDevices.size(); ++i) {
+            const QVariantMap pipewire = m_pipewireDevices.at(i).toMap();
+            const bool samePath = !path.isEmpty()
+                && pipewire.value(QStringLiteral("bluezPath")).toString() == path;
+            const bool sameAddress = !address.isEmpty()
+                && pipewire.value(QStringLiteral("address")).toString()
+                    .compare(address, Qt::CaseInsensitive) == 0;
+            if (samePath || sameAddress) {
+                match = i;
+                break;
+            }
+        }
+
+        if (match >= 0)
+            usedPipewireDevices.insert(match);
+
+        if (match >= 0 && entry.value(QStringLiteral("connected")).toBool()) {
+            const QVariantMap pipewire = m_pipewireDevices.at(match).toMap();
+            for (const QString &name : {QStringLiteral("id"), QStringLiteral("profiles"),
+                                        QStringLiteral("codec"), QStringLiteral("profile"),
+                                        QStringLiteral("format"), QStringLiteral("rate"),
+                                        QStringLiteral("channels")}) {
+                entry.insert(name, pipewire.value(name));
+            }
+        } else {
+            entry.insert(QStringLiteral("profiles"), QVariantList{});
+            entry.insert(QStringLiteral("codec"), QString{});
+            entry.insert(QStringLiteral("profile"), QString{});
+            entry.insert(QStringLiteral("format"), QString{});
+            entry.insert(QStringLiteral("rate"), 0);
+            entry.insert(QStringLiteral("channels"), 0);
+        }
+        entry.insert(QStringLiteral("connectionOperation"),
+                     path == m_connectionPath ? m_connectionOperation : QStringLiteral("idle"));
+        entry.insert(QStringLiteral("displayName"),
+                     QStringLiteral("%1 (%2)")
+                         .arg(entry.value(QStringLiteral("name")).toString(),
+                              entry.value(QStringLiteral("connected")).toBool()
+                                  ? QStringLiteral("Connected") : QStringLiteral("Disconnected")));
+        merged.append(entry);
+    }
+
+    // Keep a live PipeWire transport visible during BlueZ startup or daemon re-enumeration.
+    for (qsizetype i = 0; i < m_pipewireDevices.size(); ++i) {
+        if (usedPipewireDevices.contains(i))
+            continue;
+        QVariantMap entry = m_pipewireDevices.at(i).toMap();
+        entry.insert(QStringLiteral("paired"), true);
+        entry.insert(QStringLiteral("servicesResolved"), true);
+        entry.insert(QStringLiteral("connectionOperation"),
+                     entry.value(QStringLiteral("bluezPath")).toString() == m_connectionPath
+                         ? m_connectionOperation : QStringLiteral("idle"));
+        entry.insert(QStringLiteral("displayName"),
+                     QStringLiteral("%1 (%2)")
+                         .arg(entry.value(QStringLiteral("name")).toString(),
+                              entry.value(QStringLiteral("connected")).toBool()
+                                  ? QStringLiteral("Connected") : QStringLiteral("Disconnected")));
+        merged.append(entry);
+    }
+
+    std::sort(merged.begin(), merged.end(), [](const QVariant &left, const QVariant &right) {
+        const QVariantMap a = left.toMap();
+        const QVariantMap b = right.toMap();
+        if (a.value(QStringLiteral("connected")).toBool()
+            != b.value(QStringLiteral("connected")).toBool()) {
+            return a.value(QStringLiteral("connected")).toBool();
+        }
+        return QString::localeAwareCompare(a.value(QStringLiteral("name")).toString(),
+                                           b.value(QStringLiteral("name")).toString()) < 0;
+    });
+
+    m_devices = std::move(merged);
+    m_selectedDevice = -1;
+    for (qsizetype i = 0; i < m_devices.size(); ++i) {
+        const QVariantMap device = m_devices.at(i).toMap();
+        if ((!oldPath.isEmpty()
+             && device.value(QStringLiteral("bluezPath")).toString() == oldPath)
+            || (oldPath.isEmpty() && !oldAddress.isEmpty()
+                && device.value(QStringLiteral("address")).toString()
+                       .compare(oldAddress, Qt::CaseInsensitive) == 0)) {
+            m_selectedDevice = static_cast<int>(i);
+            break;
+        }
+    }
+    if (m_selectedDevice < 0 && !m_connectionPath.isEmpty()) {
+        for (qsizetype i = 0; i < m_devices.size(); ++i) {
+            if (m_devices.at(i).toMap().value(QStringLiteral("bluezPath")).toString()
+                == m_connectionPath) {
+                m_selectedDevice = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+    if (m_selectedDevice < 0 && !m_devices.isEmpty())
+        m_selectedDevice = 0;
+
+    emit devicesChanged();
+    emit selectedDeviceChanged();
+
+    if (m_pendingCodec.isEmpty() && !m_requestedCodec.isEmpty()) {
+        for (const QVariant &value : std::as_const(m_devices)) {
+            const QVariantMap device = value.toMap();
+            if (device.value(QStringLiteral("address")).toString() == m_requestedAddress
+                && device.value(QStringLiteral("codec")).toString() == m_requestedCodec) {
+                clearRequestedCodec();
+                break;
+            }
+        }
+    }
+    emit requestedTransportChanged();
+    evaluateConnectionOperation();
+}
+
+void AppController::evaluateConnectionOperation()
+{
+    if (m_connectionOperation == QStringLiteral("idle") || m_connectionPath.isEmpty())
+        return;
+
+    const QVariantMap device = deviceByPath(m_connectionPath);
+    if (!m_connectionTargetConnected) {
+        if (device.isEmpty() || !device.value(QStringLiteral("connected")).toBool())
+            finishConnectionOperation(QStringLiteral("Bluetooth device disconnected"));
+        return;
+    }
+
+    const bool transportReady = device.value(QStringLiteral("connected")).toBool()
+        && !device.value(QStringLiteral("profiles")).toList().isEmpty();
+    if (transportReady)
+        finishConnectionOperation(QStringLiteral("Bluetooth device connected"));
+}
+
+void AppController::finishConnectionOperation(const QString &message)
+{
+    if (m_connectionOperation == QStringLiteral("idle"))
+        return;
+    m_connectionTimer.stop();
+    m_connectionPath.clear();
+    m_connectionTargetConnected = false;
+    m_connectionOperation = QStringLiteral("idle");
+    emit connectionOperationChanged();
+    setBusy(false);
+    rebuildDevices();
+    setStatusMessage(message);
+}
+
+void AppController::updateIdleStatus()
+{
+    if (m_devices.isEmpty()) {
+        setStatusMessage(QStringLiteral("No paired Bluetooth audio device"));
+        return;
+    }
+    const QVariantMap selected = m_selectedDevice >= 0 && m_selectedDevice < m_devices.size()
+        ? m_devices.at(m_selectedDevice).toMap() : QVariantMap{};
+    if (!selected.value(QStringLiteral("connected")).toBool()) {
+        setStatusMessage(QStringLiteral("Disconnected"));
+    } else if (selected.value(QStringLiteral("profiles")).toList().isEmpty()) {
+        setStatusMessage(QStringLiteral("Connected, waiting for audio transport"));
+    } else {
+        setStatusMessage(QStringLiteral("Ready"));
+    }
 }
 
 void AppController::setStatusMessage(const QString &message)
@@ -329,28 +600,8 @@ void AppController::requestBluetoothReconnect()
 {
     if (m_pendingBluezPath.isEmpty())
         return;
-
-    QDBusInterface device(QStringLiteral("org.bluez"), m_pendingBluezPath,
-                          QStringLiteral("org.bluez.Device1"),
-                          QDBusConnection::systemBus());
-    if (!device.isValid())
-        return;
-
     setStatusMessage(QStringLiteral("Reconnecting Bluetooth device"));
-    auto *watcher = new QDBusPendingCallWatcher(
-        device.asyncCall(QStringLiteral("Connect")), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher](QDBusPendingCallWatcher *finished) {
-        const QDBusPendingReply<> reply = *finished;
-        if (reply.isError()) {
-            const QString name = reply.error().name();
-            if (!name.endsWith(QStringLiteral("AlreadyConnected"))
-                && !name.endsWith(QStringLiteral("InProgress"))) {
-                setStatusMessage(QStringLiteral("Bluetooth reconnect pending"));
-            }
-        }
-        watcher->deleteLater();
-    });
+    m_bluez.connectDevice(m_pendingBluezPath);
 }
 
 void AppController::retryCodecSelection()
