@@ -652,12 +652,16 @@ void AppController::retryCodecSelection()
         return;
     }
 
+    const bool connected = !device.isEmpty()
+        && device.value(QStringLiteral("connected")).toBool();
+    const bool transportReady = connected
+        && !device.value(QStringLiteral("profiles")).toList().isEmpty();
     QString error;
-    if (!m_profileSelectionIssued && !device.isEmpty()
+    if (!m_profileSelectionIssued && transportReady
         && m_monitor.selectCodec(m_pendingAddress, m_pendingCodec, &error)) {
         m_profileSelectionIssued = true;
         setStatusMessage(QStringLiteral("Switching codec"));
-    } else if (device.isEmpty() && m_retryCount % 4 == 0) {
+    } else if (!connected && m_retryCount % 4 == 0) {
         requestBluetoothReconnect();
     }
 

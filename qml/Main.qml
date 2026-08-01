@@ -311,7 +311,9 @@ Kirigami.ApplicationWindow {
                                               : "")
                                 })
                                 currentIndex: values.indexOf(Backend.preferredRate)
-                                onActivated: Backend.preferredRate = values[index]
+                                onActivated: function(index) {
+                                    Backend.preferredRate = values[index]
+                                }
                             }
                         }
 

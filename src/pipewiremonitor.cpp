@@ -187,8 +187,11 @@ public:
 
     static void onCoreError(void *data, uint32_t id, int seq, int result, const char *message)
     {
-        Q_UNUSED(id)
         Q_UNUSED(seq)
+        // Parameter enumeration can race with Bluetooth node removal during reconnects.
+        // Only an error on the core object means the PipeWire connection itself failed.
+        if (id != PW_ID_CORE)
+            return;
         auto *self = static_cast<PipeWireMonitorPrivate *>(data);
         const QString error = QStringLiteral("PipeWire error %1: %2")
                                   .arg(result).arg(QString::fromUtf8(message ? message : "unknown"));
