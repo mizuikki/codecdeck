@@ -39,6 +39,7 @@ qt_add_qml_module(codecdeck
     VERSION 1.0
     NO_IMPORT_SCAN
     QML_FILES
+        qml/AboutDialog.qml
         qml/Main.qml
 )
 

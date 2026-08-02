@@ -47,6 +47,10 @@ Kirigami.ApplicationWindow {
         return profiles.length > 0 ? 0 : -1
     }
 
+    AboutDialog {
+        id: aboutDialog
+    }
+
     pageStack.initialPage: Kirigami.Page {
         title: "CodecDeck"
         padding: 0
@@ -62,6 +66,12 @@ Kirigami.ApplicationWindow {
                 icon.name: "network-bluetooth"
                 enabled: !!root.currentDevice.bluezPath && !Backend.busy
                 onTriggered: Backend.refreshCapabilities()
+            },
+            Kirigami.Action {
+                text: "About CodecDeck"
+                icon.name: "help-about"
+                displayHint: Kirigami.DisplayHint.AlwaysHide
+                onTriggered: aboutDialog.open()
             }
         ]
 
