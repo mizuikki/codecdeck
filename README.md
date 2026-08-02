@@ -54,6 +54,25 @@ ctest --test-dir build --output-on-failure
 ./build/codecdeck
 ```
 
+## Debian package
+
+The CMake project can produce a Debian package containing the application,
+privileged helper, Polkit policy, desktop entry, metadata, and icons:
+
+```sh
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=/usr
+cmake --build build
+cpack --config build/CPackConfig.cmake -B dist
+sudo apt install ./dist/codecdeck_0.1.0_amd64.deb
+```
+
+The package currently targets Ubuntu 26.04 amd64, matching the release CI
+environment. GitHub Releases are created automatically for tags such as
+`v0.1.0`; each release contains the Debian package, a source archive, and
+SHA256 checksums.
+
 ## Install
 
 Install the desktop application for the current user and the narrowly scoped

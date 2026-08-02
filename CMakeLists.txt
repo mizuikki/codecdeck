@@ -118,9 +118,31 @@ install(FILES data/io.github.mizuikki.CodecDeck.desktop
 install(FILES data/io.github.mizuikki.CodecDeck.metainfo.xml
         DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
         COMPONENT Application)
+install(DIRECTORY data/icons/hicolor/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor
+        COMPONENT Application)
 
 configure_file(data/io.github.mizuikki.codecdeck.policy.in
                ${CMAKE_CURRENT_BINARY_DIR}/io.github.mizuikki.codecdeck.policy @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/io.github.mizuikki.codecdeck.policy
         DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/actions
         COMPONENT PrivilegedHelper)
+
+set(CPACK_PACKAGE_NAME "codecdeck")
+set(CPACK_PACKAGE_VENDOR "CodecDeck contributors")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Control Bluetooth audio codecs on PipeWire")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_CONTACT "CodecDeck contributors")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_NAME "codecdeck")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "CodecDeck contributors")
+set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/mizuikki/codecdeck")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS
+    "bluez, wireplumber, polkitd, qt6-qpa-plugins, qml6-module-org-kde-kirigami, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEB_COMPONENT_INSTALL OFF)
+
+include(CPack)

@@ -32,6 +32,7 @@ jobs:
             ca-certificates \
             cmake \
             desktop-file-utils \
+            dpkg-dev \
             extra-cmake-modules \
             g++ \
             git \
@@ -56,6 +57,19 @@ jobs:
 
       - name: Build
         run: cmake --build build
+
+      - name: Validate install tree and Debian package
+        run: |
+          stage="/tmp/codecdeck-stage-${GITHUB_RUN_ID}"
+          package_dir="/tmp/codecdeck-package-${GITHUB_RUN_ID}"
+          mkdir -p "$stage" "$package_dir"
+          DESTDIR="$stage" cmake --install build --prefix /usr --component Application
+          DESTDIR="$stage" cmake --install build --prefix /usr --component PrivilegedHelper
+          test -x "$stage/usr/bin/codecdeck"
+          test -x "$stage/usr/libexec/codecdeck-helper"
+          test -f "$stage/usr/share/icons/hicolor/512x512/apps/io.github.mizuikki.CodecDeck.png"
+          cpack --config build/CPackConfig.cmake -B "$package_dir"
+          dpkg-deb --info "$package_dir"/*.deb
 
       - name: Test
         run: ctest --test-dir build --output-on-failure

@@ -1,4 +1,7 @@
 /build*/
+/dist*/
+/_CPack_Packages*/
+*.deb
 /.cache/
 /.qt/
 CMakeUserPresets.json

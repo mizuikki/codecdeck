@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  LANG: C.UTF-8
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package and publish
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            appstream \
+            ca-certificates \
+            cmake \
+            desktop-file-utils \
+            dpkg-dev \
+            extra-cmake-modules \
+            file \
+            g++ \
+            gh \
+            git \
+            libpipewire-0.3-dev \
+            libxml2-utils \
+            ninja-build \
+            pkg-config \
+            qml6-module-org-kde-kirigami \
+            qml6-module-qtquick \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            qt6-declarative-dev-tools
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check release version
+        run: |
+          project_version="$(sed -n 's/^project(CodecDeck VERSION \([^ )]*\).*/\1/p' CMakeLists.txt)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          test -n "$project_version"
+          test "$project_version" = "$tag_version"
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX=/usr
+          -DBUILD_TESTING=ON
+
+      - name: Build and test
+        run: |
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+          /usr/lib/qt6/bin/qmllint -I build qml/Main.qml
+          appstreamcli validate --no-net data/io.github.mizuikki.CodecDeck.metainfo.xml
+          desktop-file-validate data/io.github.mizuikki.CodecDeck.desktop
+          xmllint --noout data/io.github.mizuikki.codecdeck.policy.in
+
+      - name: Build Debian package
+        run: |
+          mkdir -p dist
+          cpack --config build/CPackConfig.cmake -B dist
+          deb="$(find dist -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$deb"
+          dpkg-deb --info "$deb"
+          package_root="package-root-${GITHUB_RUN_ID}"
+          mkdir -p "$package_root"
+          dpkg-deb --extract "$deb" "$package_root"
+          test -x "$package_root/usr/bin/codecdeck"
+          test -x "$package_root/usr/libexec/codecdeck-helper"
+          test -f "$package_root/usr/share/applications/io.github.mizuikki.CodecDeck.desktop"
+          test -f "$package_root/usr/share/metainfo/io.github.mizuikki.CodecDeck.metainfo.xml"
+          test -f "$package_root/usr/share/polkit-1/actions/io.github.mizuikki.codecdeck.policy"
+          test -f "$package_root/usr/share/icons/hicolor/512x512/apps/io.github.mizuikki.CodecDeck.png"
+
+      - name: Create source archive and checksums
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          git archive --format=tar.gz \
+            --prefix="codecdeck-${version}/" \
+            --output="dist/codecdeck-${version}.tar.gz" HEAD
+          sha256sum dist/*.deb dist/*.tar.gz > dist/SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "CodecDeck ${version}" \
+            --generate-notes \
+            dist/*.deb dist/*.tar.gz dist/SHA256SUMS

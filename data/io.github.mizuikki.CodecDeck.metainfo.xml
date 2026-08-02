@@ -14,6 +14,7 @@
     <p>CodecDeck controls Bluetooth A2DP codec profiles and quality preferences on Linux systems using PipeWire and WirePlumber.</p>
   </description>
   <launchable type="desktop-id">io.github.mizuikki.CodecDeck.desktop</launchable>
+  <icon type="stock">io.github.mizuikki.CodecDeck</icon>
   <provides>
     <binary>codecdeck</binary>
   </provides>
