@@ -93,6 +93,7 @@ jobs:
       - name: Create source archive and checksums
         run: |
           version="${GITHUB_REF_NAME#v}"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git archive --format=tar.gz \
             --prefix="codecdeck-${version}/" \
             --output="dist/codecdeck-${version}.tar.gz" HEAD
