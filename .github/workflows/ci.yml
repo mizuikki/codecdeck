@@ -34,6 +34,7 @@ jobs:
             desktop-file-utils \
             dpkg-dev \
             extra-cmake-modules \
+            file \
             g++ \
             git \
             libpipewire-0.3-dev \
