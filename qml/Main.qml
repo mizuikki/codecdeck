@@ -6,7 +6,7 @@ import org.kde.kirigami as Kirigami
 Kirigami.ApplicationWindow {
     id: root
     width: 860
-    height: 620
+    height: 540
     minimumWidth: 420
     minimumHeight: 500
     visible: true
