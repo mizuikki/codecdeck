@@ -89,6 +89,7 @@ jobs:
           test -f "$package_root/usr/share/metainfo/io.github.mizuikki.CodecDeck.metainfo.xml"
           test -f "$package_root/usr/share/polkit-1/actions/io.github.mizuikki.codecdeck.policy"
           test -f "$package_root/usr/share/icons/hicolor/512x512/apps/io.github.mizuikki.CodecDeck.png"
+          test -f "$package_root/usr/share/icons/hicolor/1024x1024/apps/io.github.mizuikki.CodecDeck.png"
 
       - name: Create source archive and checksums
         run: |

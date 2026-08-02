@@ -42,12 +42,14 @@ qt_add_qml_module(codecdeck
         qml/Main.qml
 )
 
+set(CODECDECK_APP_ICON_PNG
+    data/icons/hicolor/512x512/apps/io.github.mizuikki.CodecDeck.png)
 set_source_files_properties(
-    data/icons/hicolor/512x512/apps/io.github.mizuikki.CodecDeck.png
+    ${CODECDECK_APP_ICON_PNG}
     PROPERTIES QT_RESOURCE_ALIAS "io.github.mizuikki.CodecDeck.png")
 qt_add_resources(codecdeck codecdeck_icons
     PREFIX "/icons"
-    FILES data/icons/hicolor/512x512/apps/io.github.mizuikki.CodecDeck.png
+    FILES ${CODECDECK_APP_ICON_PNG}
 )
 
 target_include_directories(codecdeck PRIVATE src)

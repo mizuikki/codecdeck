@@ -69,6 +69,7 @@ jobs:
           test -x "$stage/usr/bin/codecdeck"
           test -x "$stage/usr/libexec/codecdeck-helper"
           test -f "$stage/usr/share/icons/hicolor/512x512/apps/io.github.mizuikki.CodecDeck.png"
+          test -f "$stage/usr/share/icons/hicolor/1024x1024/apps/io.github.mizuikki.CodecDeck.png"
           cpack --config build/CPackConfig.cmake -B "$package_dir"
           dpkg-deb --info "$package_dir"/*.deb
 

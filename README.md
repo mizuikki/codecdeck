@@ -28,6 +28,12 @@ provide a stable per-codec setting for it.
 See [Architecture](docs/architecture.md) for the runtime data flow and the
 bit-depth extension boundary.
 
+## Icon assets
+
+The application icon source is `data/icons/app-icon/CodecDeck-app-icon.svg`.
+The installed hicolor PNGs are exported from that vector artwork, and the
+512 px export is embedded for the runtime window icon.
+
 ## Requirements
 
 - Qt 6.8 or newer with Qt Quick Controls and Kirigami
