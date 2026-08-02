@@ -1,121 +1,145 @@
 # CodecDeck
 
+[![CI](https://github.com/mizuikki/codecdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/mizuikki/codecdeck/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/mizuikki/codecdeck)](https://github.com/mizuikki/codecdeck/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 CodecDeck is a Linux desktop control panel for Bluetooth audio codecs on
-PipeWire and WirePlumber. It shows the active transport format, switches among
-the A2DP profiles exposed by PipeWire, and manages LDAC and LHDC v5 quality
-preferences from one interface.
+PipeWire and WirePlumber. It shows the negotiated audio transport, switches
+A2DP codecs, and manages LDAC and LHDC v5 quality preferences from one place.
 
-## Current features
+![CodecDeck interface](docs/images/codecdeck-ui.png)
 
-- Native PipeWire device and node discovery, without parsing command output
+## Install
+
+Download the Debian package from the
+[latest GitHub Release](https://github.com/mizuikki/codecdeck/releases/latest),
+then install it with APT:
+
+```sh
+sudo apt install ./codecdeck_*_amd64.deb
+```
+
+Release packages currently target Ubuntu 26.04 on amd64. The package includes
+the desktop application, privileged helper, Polkit policy, desktop entry,
+AppStream metadata, and application icons.
+
+## Usage
+
+1. Pair a Bluetooth audio device in the system settings.
+2. Open CodecDeck and select the device.
+3. Connect the device if necessary, then select an available A2DP codec.
+4. Use **Switch codec** for a temporary profile change.
+5. Choose a preferred sample rate and quality mode, then use
+   **Apply and reconnect** to persist the settings through WirePlumber.
+
+Live codec and format controls become available after BlueZ reports the device
+as connected and PipeWire publishes its A2DP transport. Use **Refresh Bluetooth
+capabilities** only when BlueZ is exposing stale codec capabilities; this action
+requires Polkit authorization and briefly disconnects the selected device.
+
+## Features
+
+- Native PipeWire device and node discovery without parsing command output
 - Paired A2DP device discovery and connection control through BlueZ
 - Active codec, profile, PCM format, sample rate, and channel count
-- Inline requested-versus-active codec and sample-rate fallback indicators
-- Separate draft, configured, and negotiated sample-rate state
+- Requested-versus-negotiated codec and sample-rate fallback indicators
 - Codec switching through PipeWire device profile parameters
 - LDAC quality modes: Auto, High, Standard, and Mobile
 - LHDC v5 quality modes: Auto, 400, 500, 900, and 1000 kbit/s
-- Preferred Bluetooth sample rate
-- Atomic WirePlumber configuration updates
-- WirePlumber restart through the user systemd D-Bus API
-- Bluetooth reconnection through the BlueZ system D-Bus API
+- Persistent preferred sample rate and quality settings
+- Atomic WirePlumber configuration updates and managed reconnection
 - Polkit-authorized refresh of stale BlueZ codec capabilities
 
-The displayed bit depth is the negotiated PCM input format. Explicit bit-depth
-selection is intentionally not exposed yet because upstream PipeWire does not
-provide a stable per-codec setting for it.
+## Compatibility
 
-See [Architecture](docs/architecture.md) for the runtime data flow and the
-bit-depth extension boundary.
-
-## Icon assets
-
-The application icon source is `data/icons/app-icon/CodecDeck-app-icon.svg`.
-The installed hicolor PNGs are exported from that vector artwork, and the
-512 px export is embedded for the runtime window icon.
-
-## Requirements
-
-- Qt 6.8 or newer with Qt Quick Controls and Kirigami
+- Qt 6.8 or newer with Qt Quick Controls and KDE Kirigami
 - PipeWire 1.4 or newer
 - WirePlumber 0.5 or newer
 - BlueZ 5
 - A PipeWire build with the desired Bluetooth codec libraries enabled
 
-On Ubuntu:
+Available codecs depend on the local PipeWire build and the capabilities of the
+Bluetooth device. CodecDeck displays the negotiated PCM bit depth but does not
+offer a bit-depth selector because PipeWire does not expose a stable per-codec
+setting for it.
+
+## Build from source
+
+Install the development dependencies on Ubuntu:
 
 ```sh
-sudo apt install cmake ninja-build extra-cmake-modules \
-  qt6-base-dev qt6-declarative-dev qml6-module-qtquick-controls \
-  qml6-module-org-kde-kirigami libpipewire-0.3-dev
+sudo apt install cmake ninja-build g++ pkg-config extra-cmake-modules \
+  qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools \
+  qml6-module-org-kde-kirigami qml6-module-qtquick \
+  qml6-module-qtquick-controls qml6-module-qtquick-layouts \
+  libpipewire-0.3-dev
 ```
 
-## Build
+Configure, build, test, and run CodecDeck:
 
 ```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build build
 ctest --test-dir build --output-on-failure
 ./build/codecdeck
 ```
 
-## Debian package
-
-The CMake project can produce a Debian package containing the application,
-privileged helper, Polkit policy, desktop entry, metadata, and icons:
-
-```sh
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX=/usr
-cmake --build build
-cpack --config build/CPackConfig.cmake -B dist
-sudo apt install ./dist/codecdeck_0.1.1_amd64.deb
-```
-
-The package currently targets Ubuntu 26.04 amd64, matching the release CI
-environment. GitHub Releases are created automatically for tags such as
-`v0.1.1`; each release contains the Debian package, a source archive, and
-SHA256 checksums.
-
-## Install
-
-Install the desktop application for the current user and the narrowly scoped
-privileged helper system-wide:
+To install the application for the current user and the narrowly scoped helper
+system-wide:
 
 ```sh
 cmake --install build --prefix "$HOME/.local" --component Application
 sudo cmake --install build --prefix /usr --component PrivilegedHelper
 ```
 
-The system component installs the helper executable and its Polkit policy.
-Without it, CodecDeck still monitors and configures codecs, but cannot refresh
-stale BlueZ capability caches.
+The application remains usable without the helper, but it cannot refresh stale
+BlueZ capability caches.
 
-## Configuration
+## Build a Debian package
 
-CodecDeck writes only this user-owned drop-in:
+```sh
+cmake -S . -B build-release -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=/usr
+cmake --build build-release
+ctest --test-dir build-release --output-on-failure
+cpack --config build-release/CPackConfig.cmake -B dist
+```
+
+Pushing a version tag such as `v0.1.1` runs the release workflow, validates the
+tag against the CMake project version, and publishes the Debian package, source
+archive, and SHA256 checksums.
+
+## Configuration and permissions
+
+CodecDeck writes one user-owned WirePlumber drop-in:
 
 ```text
 ~/.config/wireplumber/wireplumber.conf.d/51-codecdeck.conf
 ```
 
-It does not modify distribution files under `/usr` or `/etc`. Applying changes
-restarts the current user's `wireplumber.service`, so Bluetooth audio is
-briefly interrupted while the transport reconnects.
+Applying settings restarts the current user's `wireplumber.service`, briefly
+interrupting Bluetooth audio while the transport reconnects. Normal device
+connection, disconnection, codec switching, and configuration do not require
+root privileges.
 
-`Refresh Bluetooth capabilities` is the only privileged operation. Polkit
+**Refresh Bluetooth capabilities** is the only privileged operation. Polkit
 runs `/usr/libexec/codecdeck-helper`, which validates the selected BlueZ object
-path, disconnects that device, backs up its cache under
-`/var/backups/codecdeck`, and removes only that cache file. The GUI itself
-always remains unprivileged.
+path, backs up the exact cache file under `/var/backups/codecdeck`, and removes
+only that file. The GUI always remains unprivileged.
 
-Normal device connection and disconnection use `org.bluez.Device1` directly
-and do not invoke the privileged helper. CodecDeck lists paired A2DP devices
-even while they are disconnected; live codec and format controls become
-available after PipeWire publishes the connected audio transport.
+## Development
+
+- [Architecture and runtime data flow](docs/architecture.md)
+- [Application icon assets](docs/branding.md)
+- [Issue tracker](https://github.com/mizuikki/codecdeck/issues)
+
+Contributions are welcome. Before opening a pull request, build the project and
+run `ctest --test-dir build --output-on-failure`.
 
 ## License
 
-[MIT](LICENSE)
+CodecDeck is available under the [MIT License](LICENSE).
