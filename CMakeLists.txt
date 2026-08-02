@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(CodecDeck VERSION 0.1.0 LANGUAGES CXX)
+project(CodecDeck VERSION 0.1.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 set(CODECDECK_HELPER_PATH "${CMAKE_INSTALL_FULL_LIBEXECDIR}/codecdeck-helper")
@@ -40,6 +40,14 @@ qt_add_qml_module(codecdeck
     NO_IMPORT_SCAN
     QML_FILES
         qml/Main.qml
+)
+
+set_source_files_properties(
+    data/icons/hicolor/512x512/apps/io.github.mizuikki.CodecDeck.png
+    PROPERTIES QT_RESOURCE_ALIAS "io.github.mizuikki.CodecDeck.png")
+qt_add_resources(codecdeck codecdeck_icons
+    PREFIX "/icons"
+    FILES data/icons/hicolor/512x512/apps/io.github.mizuikki.CodecDeck.png
 )
 
 target_include_directories(codecdeck PRIVATE src)

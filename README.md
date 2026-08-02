@@ -65,12 +65,12 @@ cmake -S . -B build -G Ninja \
   -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build build
 cpack --config build/CPackConfig.cmake -B dist
-sudo apt install ./dist/codecdeck_0.1.0_amd64.deb
+sudo apt install ./dist/codecdeck_0.1.1_amd64.deb
 ```
 
 The package currently targets Ubuntu 26.04 amd64, matching the release CI
 environment. GitHub Releases are created automatically for tags such as
-`v0.1.0`; each release contains the Debian package, a source archive, and
+`v0.1.1`; each release contains the Debian package, a source archive, and
 SHA256 checksums.
 
 ## Install
